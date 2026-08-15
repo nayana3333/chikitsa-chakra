@@ -1,0 +1,228 @@
+@import "tailwindcss";
+
+/* Class-based dark mode: the theme toggle writes `.dark` onto <html>, which
+   beats prefers-color-scheme so an explicit choice always wins. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+  Palette. Rather than the default "healthcare blue" or the generic green of
+  most Ayurveda sites, the surfaces are warm parchment and the primary is a
+  deep forest — with turmeric as the accent. Colours are in oklch so that
+  lightening or darkening a hue keeps its perceived brightness consistent.
+*/
+:root {
+  --radius: 0.75rem;
+
+  --background: oklch(0.99 0.005 95);
+  --foreground: oklch(0.22 0.02 150);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.22 0.02 150);
+
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.22 0.02 150);
+
+  /* Deep forest green — the clinical primary */
+  --primary: oklch(0.42 0.075 165);
+  --primary-foreground: oklch(0.98 0.01 95);
+
+  /* Warm parchment */
+  --secondary: oklch(0.96 0.014 92);
+  --secondary-foreground: oklch(0.3 0.03 160);
+
+  --muted: oklch(0.96 0.01 95);
+  --muted-foreground: oklch(0.52 0.02 150);
+
+  /* Turmeric */
+  --accent: oklch(0.78 0.14 78);
+  --accent-foreground: oklch(0.26 0.04 70);
+
+  --destructive: oklch(0.58 0.19 27);
+  --destructive-foreground: oklch(0.98 0.01 95);
+
+  --success: oklch(0.6 0.13 155);
+  --warning: oklch(0.75 0.15 70);
+
+  --border: oklch(0.9 0.012 95);
+  --input: oklch(0.9 0.012 95);
+  --ring: oklch(0.42 0.075 165);
+
+  /* The three doshas keep one colour each across every chart, badge, and
+     progress bar in the app, so the mapping becomes learnable. */
+  --vata: oklch(0.62 0.13 285); /* air & ether — violet */
+  --pitta: oklch(0.66 0.16 45); /* fire & water — ember */
+  --kapha: oklch(0.58 0.11 195); /* earth & water — teal */
+
+  --chart-1: oklch(0.42 0.075 165);
+  --chart-2: oklch(0.78 0.14 78);
+  --chart-3: oklch(0.62 0.13 285);
+  --chart-4: oklch(0.66 0.16 45);
+  --chart-5: oklch(0.58 0.11 195);
+}
+
+.dark {
+  --background: oklch(0.17 0.014 165);
+  --foreground: oklch(0.95 0.008 95);
+
+  --card: oklch(0.21 0.016 165);
+  --card-foreground: oklch(0.95 0.008 95);
+
+  --popover: oklch(0.21 0.016 165);
+  --popover-foreground: oklch(0.95 0.008 95);
+
+  --primary: oklch(0.72 0.11 165);
+  --primary-foreground: oklch(0.17 0.014 165);
+
+  --secondary: oklch(0.27 0.018 165);
+  --secondary-foreground: oklch(0.95 0.008 95);
+
+  --muted: oklch(0.27 0.018 165);
+  --muted-foreground: oklch(0.68 0.014 150);
+
+  --accent: oklch(0.72 0.13 78);
+  --accent-foreground: oklch(0.17 0.014 165);
+
+  --destructive: oklch(0.65 0.18 27);
+  --destructive-foreground: oklch(0.98 0.01 95);
+
+  --success: oklch(0.68 0.13 155);
+  --warning: oklch(0.78 0.14 70);
+
+  --border: oklch(0.3 0.018 165);
+  --input: oklch(0.3 0.018 165);
+  --ring: oklch(0.72 0.11 165);
+
+  --vata: oklch(0.7 0.13 285);
+  --pitta: oklch(0.72 0.15 45);
+  --kapha: oklch(0.68 0.11 195);
+
+  --chart-1: oklch(0.72 0.11 165);
+  --chart-2: oklch(0.72 0.13 78);
+  --chart-3: oklch(0.7 0.13 285);
+  --chart-4: oklch(0.72 0.15 45);
+  --chart-5: oklch(0.68 0.11 195);
+}
+
+/* Expose the tokens above as Tailwind utilities: bg-primary, text-vata, etc. */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-vata: var(--vata);
+  --color-pitta: var(--pitta);
+  --color-kapha: var(--kapha);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: var(--font-sans-var), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-serif-var), ui-serif, Georgia, serif;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Respect the OS setting for users who have asked for less motion. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer utilities {
+  @keyframes chakra-fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes chakra-dialog-in {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -48%) scale(0.97);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+  }
+
+  @keyframes chakra-rise {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .dialog-overlay {
+    animation: chakra-fade-in 150ms ease-out;
+  }
+
+  .dialog-panel {
+    animation: chakra-dialog-in 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .animate-rise {
+    animation: chakra-rise 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* Subtle mandala-inspired background for marketing surfaces. */
+  .bg-chakra-grid {
+    background-image:
+      radial-gradient(
+        circle at 1px 1px,
+        color-mix(in oklch, var(--primary) 12%, transparent) 1px,
+        transparent 0
+      );
+    background-size: 28px 28px;
+  }
+}
