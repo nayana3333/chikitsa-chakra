@@ -1,0 +1,721 @@
+// Chikitsa Chakra — Panchakarma Patient Management & Therapy Scheduling
+// Domain model for an Ayurvedic clinic: constitution assessment, multi-phase
+// therapy protocols, resource-aware scheduling, inventory, and billing.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────
+// Identity & access
+// ─────────────────────────────────────────────────────────────
+
+enum Role {
+  PATIENT
+  DOCTOR
+  THERAPIST
+  ADMIN
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  role         Role
+  firstName    String
+  lastName     String
+  phone        String?
+  avatarUrl    String?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  patient   PatientProfile?
+  doctor    DoctorProfile?
+  therapist TherapistProfile?
+
+  notifications Notification[]
+  auditLogs     AuditLog[]
+  chatThreads   ChatThread[]
+  stockMoves    StockMovement[]
+
+  @@index([role])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Profiles
+// ─────────────────────────────────────────────────────────────
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+model PatientProfile {
+  id               String    @id @default(cuid())
+  userId           String    @unique
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mrn              String    @unique // medical record number
+  dateOfBirth      DateTime?
+  gender           Gender?
+  bloodGroup       String?
+  occupation       String?
+  address          String?
+  city             String?
+  emergencyContact String?
+  allergies        String?
+  chronicConditions String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  assessments   DoshaAssessment[]
+  consultations Consultation[]
+  therapyPlans  TherapyPlan[]
+  progress      ProgressEntry[]
+  dietPlans     DietPlan[]
+  invoices      Invoice[]
+  feedback      SessionFeedback[]
+
+  @@index([mrn])
+}
+
+model DoctorProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  registrationNo  String   @unique
+  qualification   String
+  specializations String[]
+  yearsExperience Int      @default(0)
+  consultationFee Decimal  @db.Decimal(10, 2)
+  bio             String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  consultations Consultation[]
+  therapyPlans  TherapyPlan[]
+  assessments   DoshaAssessment[]
+}
+
+model TherapistProfile {
+  id              String       @id @default(cuid())
+  userId          String       @unique
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeCode    String       @unique
+  qualification   String
+  expertise       TherapyType[]
+  yearsExperience Int          @default(0)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  availability AvailabilityRule[]
+  timeOff      TimeOff[]
+  sessions     TherapySession[]
+}
+
+// Weekly recurring availability. dayOfWeek: 0=Sunday .. 6=Saturday.
+// startMinute/endMinute are minutes from midnight, keeping time math integer-only.
+model AvailabilityRule {
+  id          String           @id @default(cuid())
+  therapistId String
+  therapist   TherapistProfile @relation(fields: [therapistId], references: [id], onDelete: Cascade)
+  dayOfWeek   Int
+  startMinute Int
+  endMinute   Int
+  isActive    Boolean          @default(true)
+
+  @@unique([therapistId, dayOfWeek, startMinute])
+  @@index([therapistId, dayOfWeek])
+}
+
+model TimeOff {
+  id          String           @id @default(cuid())
+  therapistId String
+  therapist   TherapistProfile @relation(fields: [therapistId], references: [id], onDelete: Cascade)
+  startAt     DateTime
+  endAt       DateTime
+  reason      String?
+
+  @@index([therapistId, startAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Ayurvedic constitution (Prakriti) & imbalance (Vikriti)
+// ─────────────────────────────────────────────────────────────
+
+enum Dosha {
+  VATA
+  PITTA
+  KAPHA
+}
+
+enum AssessmentType {
+  PRAKRITI // innate constitution — stable for life
+  VIKRITI // current imbalance — changes with treatment
+}
+
+model DoshaAssessment {
+  id        String         @id @default(cuid())
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  type      AssessmentType
+
+  vataScore  Int
+  pittaScore Int
+  kaphaScore Int
+  dominant   Dosha
+  secondary  Dosha?
+  // Raw questionnaire answers: { [questionId]: "VATA" | "PITTA" | "KAPHA" }
+  responses  Json
+
+  assessedById String?
+  assessedBy   DoctorProfile? @relation(fields: [assessedById], references: [id])
+  notes        String?
+  createdAt    DateTime       @default(now())
+
+  @@index([patientId, type, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Consultation & clinical record
+// ─────────────────────────────────────────────────────────────
+
+enum ConsultationStatus {
+  REQUESTED
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+model Consultation {
+  id        String         @id @default(cuid())
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId  String
+  doctor    DoctorProfile  @relation(fields: [doctorId], references: [id])
+
+  scheduledAt DateTime
+  status      ConsultationStatus @default(REQUESTED)
+
+  chiefComplaint String?
+  // [{ name, severity: 1-10, durationDays, notes }]
+  symptoms       Json?
+  examination    String?
+  diagnosis      String?
+  // Ayurvedic framing: roga (disease), nidana (causative factors), samprapti (pathogenesis)
+  ayurvedicDx    String?
+  doctorNotes    String?
+  followUpInDays Int?
+
+  fee       Decimal? @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  therapyPlans  TherapyPlan[]
+  prescriptions Prescription[]
+  invoiceLines  InvoiceLine[]
+
+  @@index([patientId, scheduledAt])
+  @@index([doctorId, scheduledAt])
+  @@index([status])
+}
+
+model Prescription {
+  id             String       @id @default(cuid())
+  consultationId String
+  consultation   Consultation @relation(fields: [consultationId], references: [id], onDelete: Cascade)
+  medicineName   String
+  dosage         String
+  frequency      String
+  durationDays   Int
+  anupana        String? // vehicle taken with the medicine (honey, warm water, ghee)
+  instructions   String?
+
+  @@index([consultationId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Therapy protocols & scheduling
+// ─────────────────────────────────────────────────────────────
+
+enum TherapyType {
+  VAMANA // therapeutic emesis
+  VIRECHANA // purgation
+  BASTI // medicated enema
+  NASYA // nasal administration
+  RAKTAMOKSHANA // bloodletting
+  ABHYANGA // oil massage
+  SHIRODHARA // oil stream on forehead
+  SWEDANA // sudation / steam
+  UDVARTANA // herbal powder massage
+  KATI_BASTI // localised oil pooling
+}
+
+// The three stages of any Panchakarma procedure.
+enum TherapyPhase {
+  PURVAKARMA // preparatory (snehana, swedana)
+  PRADHANAKARMA // the main procedure
+  PASCHATKARMA // post-care (diet, rest, rasayana)
+}
+
+enum PlanStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+// A reusable clinical template — "standard 21-day Virechana protocol".
+model ProtocolTemplate {
+  id          String      @id @default(cuid())
+  name        String
+  therapyType TherapyType
+  description String?
+  totalDays   Int
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+
+  steps ProtocolStep[]
+  plans TherapyPlan[]
+
+  @@index([therapyType])
+}
+
+model ProtocolStep {
+  id            String           @id @default(cuid())
+  templateId    String
+  template      ProtocolTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  phase         TherapyPhase
+  dayOffset     Int // 0-based day from plan start
+  procedureName String
+  durationMin   Int
+  // [{ itemName, quantity, unit }] — drives inventory consumption
+  materials     Json?
+  notes         String?
+  isRestDay     Boolean          @default(false)
+
+  @@unique([templateId, dayOffset, procedureName])
+  @@index([templateId, dayOffset])
+}
+
+// An instance of a protocol prescribed to one patient.
+model TherapyPlan {
+  id             String        @id @default(cuid())
+  patientId      String
+  patient        PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId       String
+  doctor         DoctorProfile @relation(fields: [doctorId], references: [id])
+  consultationId String?
+  consultation   Consultation? @relation(fields: [consultationId], references: [id])
+  templateId     String?
+  template       ProtocolTemplate? @relation(fields: [templateId], references: [id])
+
+  therapyType TherapyType
+  status      PlanStatus  @default(DRAFT)
+  startDate   DateTime
+  endDate     DateTime
+  totalDays   Int
+  goals       String?
+  // Recorded at prescription time so the clinical decision is auditable.
+  contraindicationsChecked Boolean @default(false)
+  contraindicationNotes    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions  TherapySession[]
+  progress  ProgressEntry[]
+  dietPlans DietPlan[]
+
+  @@index([patientId, status])
+  @@index([doctorId])
+  @@index([startDate])
+}
+
+enum RoomType {
+  CONSULTATION
+  THERAPY_TABLE
+  STEAM_CHAMBER
+  BASTI_ROOM
+}
+
+model Room {
+  id       String   @id @default(cuid())
+  name     String   @unique
+  type     RoomType
+  capacity Int      @default(1)
+  isActive Boolean  @default(true)
+
+  sessions TherapySession[]
+}
+
+enum SessionStatus {
+  SCHEDULED
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  MISSED
+  CANCELLED
+  RESCHEDULED
+}
+
+model TherapySession {
+  id          String           @id @default(cuid())
+  planId      String
+  plan        TherapyPlan      @relation(fields: [planId], references: [id], onDelete: Cascade)
+  therapistId String?
+  therapist   TherapistProfile? @relation(fields: [therapistId], references: [id])
+  roomId      String?
+  room        Room?            @relation(fields: [roomId], references: [id])
+
+  phase         TherapyPhase
+  procedureName String
+  dayNumber     Int // 1-based day within the plan
+
+  scheduledStart DateTime
+  scheduledEnd   DateTime
+  actualStart    DateTime?
+  actualEnd      DateTime?
+  status         SessionStatus @default(SCHEDULED)
+
+  // { bp: "120/80", pulse: 72, weight: 68.5, temperature: 98.4 }
+  preVitals      Json?
+  postVitals     Json?
+  therapistNotes String?
+  rescheduledFromId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  feedback     SessionFeedback?
+  materials    SessionMaterial[]
+  invoiceLines InvoiceLine[]
+
+  @@index([planId, dayNumber])
+  @@index([therapistId, scheduledStart])
+  @@index([roomId, scheduledStart])
+  @@index([status, scheduledStart])
+}
+
+model SessionFeedback {
+  id        String         @id @default(cuid())
+  sessionId String         @unique
+  session   TherapySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  comfortRating   Int // 1-5
+  symptomSeverity Int // 1-10, lower is better
+  energyLevel     Int // 1-10
+  notes           String?
+  createdAt       DateTime @default(now())
+
+  @@index([patientId])
+}
+
+// Patient-reported outcomes over the course of a plan — powers progress charts.
+model ProgressEntry {
+  id        String         @id @default(cuid())
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  planId    String?
+  plan      TherapyPlan?   @relation(fields: [planId], references: [id], onDelete: SetNull)
+
+  recordedAt      DateTime @default(now())
+  symptomSeverity Int // 1-10
+  energyLevel     Int // 1-10
+  sleepQuality    Int // 1-10
+  digestion       Int // 1-10 (agni / digestive fire)
+  mood            Int // 1-10
+  weightKg        Decimal? @db.Decimal(5, 2)
+  notes           String?
+
+  @@index([patientId, recordedAt])
+  @@index([planId, recordedAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Diet & lifestyle (Pathya / Apathya)
+// ─────────────────────────────────────────────────────────────
+
+enum DietCategory {
+  PATHYA // recommended
+  APATHYA // to avoid
+}
+
+model DietPlan {
+  id        String         @id @default(cuid())
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  planId    String?
+  plan      TherapyPlan?   @relation(fields: [planId], references: [id], onDelete: SetNull)
+
+  title       String
+  targetDosha Dosha?
+  startDate   DateTime
+  endDate     DateTime?
+  guidance    String?
+  createdAt   DateTime @default(now())
+
+  items DietItem[]
+
+  @@index([patientId])
+}
+
+model DietItem {
+  id         String       @id @default(cuid())
+  dietPlanId String
+  dietPlan   DietPlan     @relation(fields: [dietPlanId], references: [id], onDelete: Cascade)
+  category   DietCategory
+  mealTime   String? // "Breakfast", "Lunch", "Dinner", "Anytime"
+  item       String
+  notes      String?
+
+  @@index([dietPlanId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Inventory — herbs, oils, consumables with batch/expiry tracking
+// ─────────────────────────────────────────────────────────────
+
+enum ItemCategory {
+  HERB
+  OIL
+  GHEE
+  POWDER
+  DECOCTION
+  EQUIPMENT
+  CONSUMABLE
+}
+
+model InventoryItem {
+  id           String       @id @default(cuid())
+  name         String       @unique
+  category     ItemCategory
+  unit         String // ml, g, piece
+  reorderLevel Decimal      @db.Decimal(10, 2)
+  unitCost     Decimal      @db.Decimal(10, 2)
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+
+  batches   InventoryBatch[]
+  movements StockMovement[]
+  usedIn    SessionMaterial[]
+}
+
+model InventoryBatch {
+  id         String        @id @default(cuid())
+  itemId     String
+  item       InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  batchNo    String
+  quantity   Decimal       @db.Decimal(10, 2)
+  expiryDate DateTime
+  receivedAt DateTime      @default(now())
+  supplier   String?
+
+  movements StockMovement[]
+
+  @@unique([itemId, batchNo])
+  @@index([expiryDate])
+}
+
+enum MovementType {
+  IN
+  OUT
+  ADJUSTMENT
+  EXPIRED
+}
+
+model StockMovement {
+  id        String          @id @default(cuid())
+  itemId    String
+  item      InventoryItem   @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  batchId   String?
+  batch     InventoryBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  type      MovementType
+  quantity  Decimal         @db.Decimal(10, 2)
+  reason    String?
+  actorId   String?
+  actor     User?           @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  createdAt DateTime        @default(now())
+
+  @@index([itemId, createdAt])
+}
+
+// Materials actually consumed during a session — the link that lets a completed
+// session automatically draw down stock.
+model SessionMaterial {
+  id        String         @id @default(cuid())
+  sessionId String
+  session   TherapySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  itemId    String
+  item      InventoryItem  @relation(fields: [itemId], references: [id])
+  quantity  Decimal        @db.Decimal(10, 2)
+
+  @@unique([sessionId, itemId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Billing
+// ─────────────────────────────────────────────────────────────
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  UPI
+  BANK_TRANSFER
+  INSURANCE
+}
+
+model Invoice {
+  id        String         @id @default(cuid())
+  invoiceNo String         @unique
+  patientId String
+  patient   PatientProfile @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  issuedAt DateTime      @default(now())
+  dueAt    DateTime
+  status   InvoiceStatus @default(DRAFT)
+
+  subtotal   Decimal @db.Decimal(10, 2)
+  discount   Decimal @default(0) @db.Decimal(10, 2)
+  taxRate    Decimal @default(0) @db.Decimal(5, 2)
+  taxAmount  Decimal @default(0) @db.Decimal(10, 2)
+  total      Decimal @db.Decimal(10, 2)
+  amountPaid Decimal @default(0) @db.Decimal(10, 2)
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lines    InvoiceLine[]
+  payments Payment[]
+
+  @@index([patientId, issuedAt])
+  @@index([status])
+}
+
+model InvoiceLine {
+  id        String  @id @default(cuid())
+  invoiceId String
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  description String
+  quantity    Decimal @db.Decimal(10, 2)
+  unitPrice   Decimal @db.Decimal(10, 2)
+  amount      Decimal @db.Decimal(10, 2)
+
+  sessionId      String?
+  session        TherapySession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  consultationId String?
+  consultation   Consultation?   @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId])
+}
+
+model Payment {
+  id        String        @id @default(cuid())
+  invoiceId String
+  invoice   Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount    Decimal       @db.Decimal(10, 2)
+  method    PaymentMethod
+  reference String?
+  paidAt    DateTime      @default(now())
+
+  @@index([invoiceId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// Notifications, audit, AI assistant
+// ─────────────────────────────────────────────────────────────
+
+enum NotificationType {
+  SESSION_REMINDER
+  SESSION_RESCHEDULED
+  CONSULTATION_BOOKED
+  PLAN_STARTED
+  PLAN_COMPLETED
+  INVOICE_ISSUED
+  LOW_STOCK
+  EXPIRY_ALERT
+  GENERAL
+}
+
+model Notification {
+  id     String           @id @default(cuid())
+  userId String
+  user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type   NotificationType
+  title  String
+  body   String
+  link   String?
+
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt, createdAt])
+}
+
+// Append-only trail — who touched which clinical record, and when.
+model AuditLog {
+  id       String  @id @default(cuid())
+  actorId  String?
+  actor    User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action   String // "session.complete", "plan.create", ...
+  entity   String // "TherapySession"
+  entityId String
+  metadata Json?
+  ip       String?
+
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([actorId, createdAt])
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+}
+
+model ChatThread {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages ChatMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+model ChatMessage {
+  id        String     @id @default(cuid())
+  threadId  String
+  thread    ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  role      ChatRole
+  content   String
+  createdAt DateTime   @default(now())
+
+  @@index([threadId, createdAt])
+}
