@@ -23,6 +23,10 @@ const description =
   "Panchakarma patient management and therapy scheduling: constitution assessment, multi-phase protocol planning, resource-aware scheduling, and outcome tracking for Ayurvedic clinics.";
 
 export const metadata: Metadata = {
+  // Resolves the relative URLs that icon.tsx/opengraph-image.tsx produce into
+  // absolute ones. Falls back to localhost so `next build` never depends on a
+  // deployment being configured; set NEXT_PUBLIC_SITE_URL once one exists.
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
   title: {
     default: "Chikitsa Chakra — Panchakarma Care Platform",
     template: "%s · Chikitsa Chakra",
