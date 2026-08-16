@@ -19,13 +19,25 @@ const serif = Fraunces({
   axes: ["SOFT", "WONK"],
 });
 
+const description =
+  "Panchakarma patient management and therapy scheduling: constitution assessment, multi-phase protocol planning, resource-aware scheduling, and outcome tracking for Ayurvedic clinics.";
+
 export const metadata: Metadata = {
   title: {
     default: "Chikitsa Chakra — Panchakarma Care Platform",
     template: "%s · Chikitsa Chakra",
   },
-  description:
-    "Panchakarma patient management and therapy scheduling: constitution assessment, multi-phase protocol planning, resource-aware scheduling, and outcome tracking for Ayurvedic clinics.",
+  description,
+  openGraph: {
+    title: "Chikitsa Chakra — Panchakarma Care Platform",
+    description,
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Chikitsa Chakra — Panchakarma Care Platform",
+    description,
+  },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
