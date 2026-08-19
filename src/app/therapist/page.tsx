@@ -6,6 +6,7 @@ import { Badge, PhaseBadge, SessionStatusBadge } from "@/components/ui/badge";
 import { PageHeader, StatCard, EmptyState } from "@/components/ui/page";
 import { Avatar, AvatarFallback } from "@/components/ui/misc";
 import { formatDate, formatTime, humanise, initialsOf } from "@/lib/utils";
+import { SessionActions } from "./session-actions";
 
 export const metadata = { title: "Today" };
 
@@ -147,6 +148,9 @@ export default async function TherapistToday() {
                         <PhaseBadge phase={s.phase} short />
                         <SessionStatusBadge status={s.status} />
                       </div>
+                      {(s.status === "SCHEDULED" || s.status === "CONFIRMED") && (
+                        <SessionActions sessionId={s.id} procedureName={s.procedureName} />
+                      )}
                     </div>
                   </div>
                 </li>

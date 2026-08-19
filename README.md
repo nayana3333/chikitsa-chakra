@@ -14,10 +14,10 @@ Smart India Hackathon 2025 · Problem Statement **SIH25023** · Team Chikitsa Ch
 ![Prisma](https://img.shields.io/badge/Prisma-7.9-2D3748?logo=prisma&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-v4-06B6D4?logo=tailwindcss&logoColor=white)
-![Tests](https://img.shields.io/badge/tests-38%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-45%20passing-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-yellow)
 
-[Quick start](#quick-start) · [Screenshots](#screenshots) · [Architecture](#architecture) · [The two engines](#the-two-engines) · [Security](#security-model) · [Tests](#tests)
+[Quick start](#quick-start) · [Screenshots](#screenshots) · [Architecture](#architecture) · [The engines](#the-engines) · [Security](#security-model) · [Tests](#tests)
 
 </div>
 
@@ -199,7 +199,7 @@ erDiagram
 
 ---
 
-## The two engines
+## The engines
 
 The clinical logic lives in dependency-free TypeScript modules — no Prisma import, no React import, nothing but plain data in and plain data out. That is what makes 38 tests possible without a database, and it's why a real scoring bug (below) surfaced in a unit test during development instead of in front of a judge.
 
@@ -299,6 +299,26 @@ Classical contraindications — Vamana in cardiac disease, purgation therapies i
 
 The seed script runs this exact engine to place all 159 sessions in the demo data, so it's exercised end to end on every fresh clone — not only inside `vitest`.
 
+### Stock allocation — [`src/lib/inventory/consume.ts`](src/lib/inventory/consume.ts)
+
+When a therapist marks a session complete, the materials that session's protocol step calls for need to come from somewhere real — a batch, with an expiry date. This third engine decides which batch: earliest-expiry-first, spilling into the next batch once one runs out, and returning a partial allocation plus an explicit shortfall instead of throwing when total stock genuinely isn't enough. A clinic shouldn't lose the ability to chart that a session happened because the stockroom is short — the shortfall becomes a signal on the admin inventory page, not a blocked save.
+
+```ts
+// src/lib/inventory/consume.ts
+export function allocateConsumption(
+  requestedQuantity: number,
+  batches: BatchStock[],
+): AllocationResult {
+  const ordered = [...batches]
+    .filter((b) => b.quantity > 0)
+    .sort((a, b) => a.expiryDate.getTime() - b.expiryDate.getTime());
+  // walk oldest-expiring batches first, spilling into the next once one is exhausted
+  // ...
+}
+```
+
+The Server Action that calls it — [`completeTherapySession`](src/app/actions/sessions.ts) — runs the whole thing inside one Prisma transaction: matching the session back to its protocol step, allocating and decrementing stock across however many batches that takes, writing a `StockMovement` audit row per batch touched, and updating the session's status and vitals. Charting a session and drawing down what it consumed are one clinical event; the transaction makes sure they can't partially fail and leave the record and the stockroom disagreeing.
+
 ---
 
 ## AI assistant, with a real fallback
@@ -345,7 +365,7 @@ The [smoke test](#tests) exercises three of these directly against a running ser
 npm test
 ```
 
-38 unit tests over the two engines: dosha weighting and largest-remainder rounding, dual-dosha and tridoshic classification, baseline-drift status; and scheduling's overlap detection, phase ordering, rest-day handling, room-type matching, therapist availability and time-off, double-booking prevention across an entire plan, turnaround buffers, load-spreading across therapists, and contraindication flags.
+45 unit tests over three engines: dosha weighting and largest-remainder rounding, dual-dosha and tridoshic classification, baseline-drift status; scheduling's overlap detection, phase ordering, rest-day handling, room-type matching, therapist availability and time-off, double-booking prevention across an entire plan, turnaround buffers, load-spreading across therapists, and contraindication flags; and stock allocation's earliest-expiry-first consumption, multi-batch spillover, and graceful partial allocation when stock is short.
 
 One of them caught a real bug during development. With zero questions answered, every dosha score ties at exactly zero — which is *also* what a perfectly balanced tridoshic constitution looks like on paper. The scoring function fell through that ambiguity into the "two doshas are close" branch and confidently reported a **Vata-Pitta** constitution derived from no evidence at all. The fix distinguishes "no data" from "balanced data" explicitly, and now returns `"Not assessed"` when nothing was submitted:
 
@@ -441,7 +461,7 @@ The app is a standard Next.js deployment — no custom server, no special build 
 
 ## What's not built
 
-In the interest of the README matching the code exactly: inventory, billing, and notifications have complete schemas, seeded data, and working dashboard/admin views, but three behaviours are not wired up — automatic stock deduction when a session completes, an invoice-generation UI (invoices currently only come from the seed), and actual reminder delivery over SMS or email (notifications are in-app only). There's no video-consultation feature and no medicine-ordering integration, both mentioned as future direction in the team's proposal deck.
+In the interest of the README matching the code exactly: a therapist completing a session now allocates and deducts the materials that session's protocol step calls for — earliest-expiry batch first, recorded as a `StockMovement`, all inside one transaction with the status update — but two related behaviours are still not wired up: an invoice-generation UI (invoices currently only come from the seed) and actual reminder delivery over SMS or email (notifications are in-app only). There's no video-consultation feature and no medicine-ordering integration, both mentioned as future direction in the team's proposal deck.
 
 ---
 
