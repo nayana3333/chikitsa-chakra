@@ -15,7 +15,6 @@ Smart India Hackathon 2025 · Problem Statement **SIH25023** · Team Chikitsa Ch
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-v4-06B6D4?logo=tailwindcss&logoColor=white)
 ![Tests](https://img.shields.io/badge/tests-45%20passing-brightgreen)
-![License](https://img.shields.io/badge/license-MIT-yellow)
 
 [Quick start](#quick-start) · [Screenshots](#screenshots) · [Architecture](#architecture) · [The engines](#the-engines) · [Security](#security-model) · [Tests](#tests)
 
@@ -478,6 +477,8 @@ The short version of the reasoning behind the choices above, for anyone reading 
 
 ---
 
-## License
+<div align="center">
 
-[MIT](LICENSE)
+Built for Smart India Hackathon 2025 · Problem Statement SIH25023
+
+</div>
